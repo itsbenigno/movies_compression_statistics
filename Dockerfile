@@ -6,4 +6,3 @@ RUN sudo apt-get -y install cmake
 RUN sudo apt-get -y install build-essential
 RUN sudo apt-get -y install ffmpeg
 WORKDIR "/app"
-RUN g++ -o program compute_statistics.cpp
