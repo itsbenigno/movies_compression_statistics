@@ -4,7 +4,6 @@
 #include <iostream>
 #include <stdexcept>
 #include <filesystem>
-namespace fs = std::filesystem;
 
 using namespace std;
 
@@ -34,6 +33,7 @@ string exec(const char* cmd) {
  * @return mean bitrate of video
  */
 long int get_video_bitrate(string video_name){
+    cout << video_name << endl;
 	string command = "ffprobe -v quiet -select_streams v:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1 ";
     string result = exec((command+video_name).c_str());
     string delimiter = "=";
@@ -68,20 +68,50 @@ string get_ssim_name(string video, int n_vid){
 }
 
 
+/*
+ * Return true if the name of the video contains a .mp4 extension
+ */
+bool is_video(string video_name){
+    
+    filesystem::path filePath = video_name;
+    if (filePath.extension() == ".mp4")
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }  
+} 
+
+
 /**
  * 
+
+vector<double> get_stats(){
+    for righe in testo:
+    OKKIO A EVENTUALI +1
+        cerca il token "All:"
+        cerca il token " " nella sottostringa che parte dal token "All"
+        converti in intero la sottostringa rimanente
+}*/
+
+/**
+ * require video names to be without spaces, at least for now
  */
 void compress_videos(){
 
 	double step_pc = 0.2; //step percentage to compress
-	double min_pc = 0.3; //min percentage of compression
+	double min_pc = 0.1; //min percentage of compression
 
 	//for every file in the directory Videos
     std::string path = "Videos";
-    for (const auto & entry : fs::directory_iterator(path)){ 
+    for (const auto & entry : filesystem::directory_iterator(path)){ 
         string video = entry.path(); //path of the video
 
-		int video_bit_rate =  get_video_bitrate(video) * 1.5; //ffprob shows the mean, I multiply for 1.5 to take account for the constant bitrate
+        if ( is_video(video) ){
+
+		int video_bit_rate =  get_video_bitrate(video);
 		cout << video << " " <<video_bit_rate << endl;
 		
 		int n_vid = 0; //id of the compressed videovideo
@@ -104,9 +134,9 @@ void compress_videos(){
 
 			system(("ffmpeg -i "+ get_video_compressed_name(video, n_vid) + " -i "+video+" -lavfi ssim=stats_file="+ get_ssim_name(video, n_vid) + " -f null -").c_str());
 
-		}
-	}
-
+	       }
+	   }
+    }
 }
 
 
