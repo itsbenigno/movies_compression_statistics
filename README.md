@@ -1,8 +1,8 @@
 # guide
 
-docker build -t ubuntu .
+docker build -t stats .
 
-docker run -it ubuntu ./program
+docker run -it stats ./program
 
 ## dev with docker
-docker run -it --mount type=bind,source=$(pwd),target="/app" ubuntu
+docker run -it --mount type=bind,source=$(pwd),target="/app" stats
