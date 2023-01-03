@@ -4,8 +4,11 @@
 #include <iostream>
 #include <stdexcept>
 #include <filesystem>
+#include <fstream>
+#include <vector>
 
 using namespace std;
+
 
 /**
  * Execute <<cmd>> command in bash and get its output
@@ -34,8 +37,8 @@ string exec(const char* cmd) {
  */
 long int get_video_bitrate(string video_name){
     cout << video_name << endl;
-	string command = "ffprobe -v quiet -select_streams v:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1 ";
-    string result = exec((command+video_name).c_str());
+	string command = "ffprobe -v quiet -select_streams v:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1 \""+video_name+"\"";
+    string result = exec((command).c_str());
     string delimiter = "=";
     string bit_rate = result.substr(result.find(delimiter)+1, result.length());
 	return stoi(bit_rate);
@@ -48,8 +51,8 @@ long int get_video_bitrate(string video_name){
  * @return the unique name for the compressed video
  */
 string get_video_compressed_name(string video, int n_vid){
-	string delimiter = ".";
-    string no_extension_name = video.substr(0, video.find(delimiter));
+	filesystem::path p = video;
+    string no_extension_name = p.replace_extension();
 	string video_compressed_name = no_extension_name + "_compressed_"+to_string(n_vid)+ ".mp4";
 	return video_compressed_name;
 }
@@ -61,9 +64,9 @@ string get_video_compressed_name(string video, int n_vid){
  * @return the unique name for the ssim log
  */ 
 string get_ssim_name(string video, int n_vid){
-	string delimiter = ".";
-    string no_extension_name = video.substr(0, video.find(delimiter));
-	string ssim_name = no_extension_name + to_string(n_vid) + "_ssim.txt";
+    filesystem::path p = video;
+    string no_extension_name = p.replace_extension();
+	string ssim_name = no_extension_name + "_"+ to_string(n_vid) + "_ssim.txt";
 	return ssim_name;
 }
 
@@ -86,22 +89,34 @@ bool is_video(string video_name){
 
 
 /**
- * 
+ * Given the ssim file produced by ffmpeg, returns the vector containing the SSIM for each frame of the video
+ */ 
 
-vector<double> get_stats(){
-    for righe in testo:
-    OKKIO A EVENTUALI +1
-        cerca il token "All:"
-        cerca il token " " nella sottostringa che parte dal token "All"
-        converti in intero la sottostringa rimanente
-}*/
+vector<double> get_stats(string filename){
+    
+    vector<double> timeseries;
+
+    ifstream file(filename);
+    if (file.is_open()) {
+        string line;
+        while (getline(file, line)) {
+            string qualities = line.substr(line.find("All:")+4);
+            string ssim = qualities.substr(0, qualities.find(" ("));
+            timeseries.push_back(stod(ssim));
+        }
+        file.close();
+    }
+    return timeseries;
+}
+
 
 /**
- * require video names to be without spaces, at least for now
+ * 0% compression actually lose something (I think negligible) because we go from VBR to CBR 
  */
-void compress_videos(){
+vector<vector<double>> compress_videos(){
 
-	double step_pc = 0.2; //step percentage to compress
+    vector<vector<double>> video_timeseries;
+	double step_pc = 0.1; //step percentage to compress
 	double min_pc = 0.1; //min percentage of compression
 
 	//for every file in the directory Videos
@@ -111,32 +126,45 @@ void compress_videos(){
 
         if ( is_video(video) ){
 
-		int video_bit_rate =  get_video_bitrate(video);
-		cout << video << " " <<video_bit_rate << endl;
-		
-		int n_vid = 0; //id of the compressed videovideo
+    		int video_bit_rate =  get_video_bitrate(video);
+    		cout << video << " " <<video_bit_rate << endl;
+    		
+    		int n_vid = 0; //id of the compressed videovideo
+            
+            //vector<double> pointwise_summed_timeseries = initialize_empty_vector(len_vector);
 
-		//rename variable bitrate video to tmp.mp4
-		if (std::rename(video.c_str(), "Videos/tmp.mp4")) {
-	        std::perror("Error renaming");
-    	}
+    		
+            //compress the videos and log the ssim with respect of the original video (with constant bitrate that we created above)
+            for (int bit_rate = video_bit_rate; bit_rate >= int(min_pc*video_bit_rate); bit_rate-=video_bit_rate*step_pc){
+            	n_vid++; //count a new compression
+    			string video_compressed_name = get_video_compressed_name(video, n_vid);
+                string ssim_name = get_ssim_name(video, n_vid);
 
-    	//convert original video to a constant bitrate video, retaining the same quality
-		system(("ffmpeg -i Videos/tmp.mp4 -b:v "+to_string(video_bit_rate)+" -maxrate "+to_string(video_bit_rate)+" -minrate "+to_string(video_bit_rate)+" -bufsize "+to_string(video_bit_rate*2)+" -c:v libx264 "+ video).c_str());
-		video_bit_rate-=video_bit_rate*step_pc;
-		system("rm Videos/tmp.mp4");
+                //compressing
+    			system(("ffmpeg -i  \""+ video +"\" -b:v "+to_string(bit_rate)+" -maxrate "+to_string(bit_rate)+" -minrate "+to_string(bit_rate)+" -bufsize "+to_string(bit_rate*2)+" -c:v libx264 \""+ video_compressed_name +"\"").c_str());
+                //computing the ssim of the compressed video
+    			system(("ffmpeg -i \""+ video_compressed_name + "\" -i \""+video+"\" -lavfi ssim=stats_file=\""+ ssim_name + "\" -f null -").c_str()); 
+                //insert ssim into a vector
+                get_stats(ssim_name);
 
-		//compress the videos and log the ssim with respect of the original video (with constant bitrate that we created above)
-		for (int bit_rate = video_bit_rate; bit_rate >= int(min_pc*video_bit_rate); bit_rate-=video_bit_rate*step_pc){
-        	n_vid++;
-			
-			system(("ffmpeg -i "+ video +" -b:v "+to_string(bit_rate)+" -maxrate "+to_string(bit_rate)+" -minrate "+to_string(bit_rate)+" -bufsize "+to_string(bit_rate*2)+" -c:v libx264 "+ get_video_compressed_name(video, n_vid)).c_str());
+    	    }
 
-			system(("ffmpeg -i "+ get_video_compressed_name(video, n_vid) + " -i "+video+" -lavfi ssim=stats_file="+ get_ssim_name(video, n_vid) + " -f null -").c_str());
-
-	       }
+            //vector<double> regression_compression = pointwise_summed_timeseries / n_vid //(pointwise division, in order to compute regression for 0, i.e. mean)
+            //video_stats.push_back(regression_compression); //insert the film timeseries
 	   }
+
     }
+
+    return video_timeseries;
+}
+
+
+/**
+ * 
+ */
+void compute_statistics(vector<vector<double>>){
+    //for video in videos
+
 }
 
 
@@ -146,8 +174,8 @@ void compress_videos(){
  */
 int main (int argc, char** argv) {
   
-  compress_videos();
-  /*compute statistics*/
+  vector<vector<double>> videos_ssim = compress_videos();
+  /*compute statistics(videos_ssim)*/
 
 
 }
