@@ -5,6 +5,6 @@ RUN sudo apt-get -y install curl
 RUN sudo apt-get -y install cmake
 RUN sudo apt-get -y install build-essential
 RUN sudo apt-get install -y libgsl-dev
-
 RUN sudo apt-get -y install ffmpeg
 WORKDIR "/app"
+RUN make
