@@ -6,6 +6,12 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#include <algorithm>
+#include <sstream>
+#include <system_error>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_statistics.h>
+#include <gsl/gsl_statistics_double.h>
 
 using namespace std;
 
@@ -16,45 +22,71 @@ using namespace std;
  * @return the output of the bash command
  */
 string exec(const char* cmd) {
+  unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+  if (!pipe) {
+    throw runtime_error("Failed to execute command.");
+  }
 
-    array<char, 128> buffer;
-    string result;
-    shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
-    if (!pipe) throw std::runtime_error("popen() failed!");
-    while (!feof(pipe.get())) {
-        if (fgets(buffer.data(), 128, pipe.get()) != nullptr)
-            result += buffer.data();
-    }
-    return result;
+  stringstream result;
+  char buffer[1024];
+  while (fgets(buffer, sizeof(buffer), pipe.get()) != nullptr) {
+    result << buffer;
+  }
 
+  return result.str();
 }
 
 
 /**
- * Given a video, uses ffprobe to obtain the mean bitrate of the video 
- * @param the video
- * @return mean bitrate of video
+ * Given a video, uses ffprobe to obtain the bitrate of the video 
+ * note: the bitrate of a vbr video is not always the same since its a vbr
+ * @param the video path
+ * @return bitrate of video
  */
-long int get_video_bitrate(string video_name){
-    cout << video_name << endl;
-	string command = "ffprobe -v quiet -select_streams v:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1 \""+video_name+"\"";
-    string result = exec((command).c_str());
-    string delimiter = "=";
-    string bit_rate = result.substr(result.find(delimiter)+1, result.length());
-	return stoi(bit_rate);
+long int get_video_bitrate(const string& video_name) {
+  cout << video_name << endl;
+  filesystem::path video_path(video_name);
+  string command = "ffprobe -v quiet -select_streams v:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1 \"" + video_path.string() + "\"";
+  string result;
+  try {
+    result = exec(command.c_str());
+  } catch (const runtime_error& e) {
+    cerr << "Error executing command: " << e.what() << endl;
+    return -1;
+  }
+
+  string delimiter = "=";
+  size_t pos = result.find(delimiter);
+  if (pos == string::npos) {
+    cerr << "Error parsing bitrate: Delimiter not found." << endl;
+    return -1;
+  }
+
+  string bit_rate = result.substr(pos + 1, result.length());
+  try {
+    return stol(bit_rate);
+  } catch (const invalid_argument& e) {
+    cerr << "Error parsing bitrate: Invalid argument." << endl;
+    return -1;
+  } catch (const out_of_range& e) {
+    cerr << "Error parsing bitrate: Value out of range." << endl;
+    return -1;
+  }
 }
 
 
 /**
  * Given a video and an id, return the name for the compressed video
- * @param the video and the id of the video, n_vid
+ * @param the video and the id of the video (n_vid)
  * @return the unique name for the compressed video
  */
-string get_video_compressed_name(string video, int n_vid){
-	filesystem::path p = video;
-    string no_extension_name = p.replace_extension();
-	string video_compressed_name = no_extension_name + "_compressed_"+to_string(n_vid)+ ".mp4";
-	return video_compressed_name;
+string get_video_compressed_name(const string& video, int n_vid) {
+  filesystem::path input_path(video);
+  string output_stem = input_path.stem();
+  output_stem.append("_compressed_");
+  output_stem.append(to_string(n_vid));
+  filesystem::path output_path = input_path.parent_path() / (output_stem + ".mp4");
+  return output_path.string();
 }
 
 
@@ -63,35 +95,48 @@ string get_video_compressed_name(string video, int n_vid){
  * @param the video and the id of the video
  * @return the unique name for the ssim log
  */ 
-string get_ssim_name(string video, int n_vid){
-    filesystem::path p = video;
-    string no_extension_name = p.replace_extension();
-	string ssim_name = no_extension_name + "_"+ to_string(n_vid) + "_ssim.txt";
-	return ssim_name;
+string get_ssim_name(const string& video, int n_vid) {
+  filesystem::path input_path(video);
+  string output_stem = input_path.stem();
+  output_stem.append("_");
+  output_stem.append(to_string(n_vid));
+  output_stem.append("_ssim");
+  filesystem::path output_path = input_path.parent_path() / (output_stem + ".txt");
+  return output_path.string();
 }
 
 
-/*
- * Return true if the name of the video contains a .mp4 extension
+/**
+ * Given the path of a video, return true if it has .mp4 as extension
+ * @param the path of a video
+ * @return true if the video_path is a file with .mp4 extension
  */
-bool is_video(string video_name){
-    
-    filesystem::path filePath = video_name;
-    if (filePath.extension() == ".mp4")
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }  
-} 
+bool is_video(const string& video_path) {
+  filesystem::path input_path(video_path);
+  input_path = filesystem::path::make_preferred(input_path);
+  if (!input_path.has_extension()) {
+    return false;
+  }
+
+  string extension = input_path.extension().string();
+  transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+  if (extension != ".mp4") {
+    return false;
+  }
+
+  return filesystem::is_regular_file(input_path);
+}
 
 
 /**
- * Given the ssim file produced by ffmpeg, returns the vector containing the SSIM for each frame of the video
+ * Extract the SSIM from the file produced by ffmpeg
+ * Each line represents a frame
+ * e.g.
+ * n:4 Y:0.950110 U:0.988194 V:0.984612 All:0.962208 (14.225971)
+ * the ssim is 0.962208 in this case
+ * @param filename containing the SSIM file produced by ffmpeg
+ * @return the vector that contains the SSIM for each frame (information contained in filename) 
  */ 
-
 vector<double> get_stats(string filename){
     
     vector<double> timeseries;
@@ -111,6 +156,34 @@ vector<double> get_stats(string filename){
 
 
 /**
+ * We represent the element wise mean of two vectors as 
+ * {2,4},{4,8} => {((2+2)/2), ((4+8)/2)} => {3,6}
+ * @param a vector of vectors (each vector contains the ssim timeseries at a certain compression)
+ * @return element wise mean as described above
+ */
+vector<double> mean_elt_wise(const vector<vector<double>> vec) {
+
+
+    vector<double> result(vec[0].size(), 0.0); // create a vector with the same size as the inner vectors, initialized to 0.0
+
+    // iterate over the inner vectors
+    for (const auto& inner : vec) {
+        // add the elements of the inner vector element-wise to the result vector
+        for (size_t i = 0; i < inner.size(); ++i) {
+            result[i] += inner[i];
+        }
+    }
+
+    // divide each element of the result vector by the number of inner vectors
+    for (auto& elt : result) {
+        elt /= vec.size();
+    }
+
+    return result;
+}
+
+
+/**
  * 0% compression actually lose something (I think negligible) because we go from VBR to CBR 
  */
 vector<vector<double>> compress_videos(){
@@ -120,7 +193,7 @@ vector<vector<double>> compress_videos(){
 	double min_pc = 0.1; //min percentage of compression
 
 	//for every file in the directory Videos
-    std::string path = "Videos";
+    string path = "Videos";
     for (const auto & entry : filesystem::directory_iterator(path)){ 
         string video = entry.path(); //path of the video
 
@@ -129,11 +202,9 @@ vector<vector<double>> compress_videos(){
     		int video_bit_rate =  get_video_bitrate(video);
     		cout << video << " " <<video_bit_rate << endl;
     		
-    		int n_vid = 0; //id of the compressed videovideo
-            
-            //vector<double> pointwise_summed_timeseries = initialize_empty_vector(len_vector);
+    		int n_vid = 0; //id of the compressed video
+    		vector<vector<double>> video_compressions;
 
-    		
             //compress the videos and log the ssim with respect of the original video (with constant bitrate that we created above)
             for (int bit_rate = video_bit_rate; bit_rate >= int(min_pc*video_bit_rate); bit_rate-=video_bit_rate*step_pc){
             	n_vid++; //count a new compression
@@ -144,13 +215,10 @@ vector<vector<double>> compress_videos(){
     			system(("ffmpeg -i  \""+ video +"\" -b:v "+to_string(bit_rate)+" -maxrate "+to_string(bit_rate)+" -minrate "+to_string(bit_rate)+" -bufsize "+to_string(bit_rate*2)+" -c:v libx264 \""+ video_compressed_name +"\"").c_str());
                 //computing the ssim of the compressed video
     			system(("ffmpeg -i \""+ video_compressed_name + "\" -i \""+video+"\" -lavfi ssim=stats_file=\""+ ssim_name + "\" -f null -").c_str()); 
-                //insert ssim into a vector
-                get_stats(ssim_name);
-
+                //saving it into a vector
+                video_compressions.push_back(get_stats(ssim_name));
     	    }
-
-            //vector<double> regression_compression = pointwise_summed_timeseries / n_vid //(pointwise division, in order to compute regression for 0, i.e. mean)
-            //video_stats.push_back(regression_compression); //insert the film timeseries
+            video_timeseries.push_back(mean_elt_wise(video_compressions));
 	   }
 
     }
@@ -159,12 +227,42 @@ vector<vector<double>> compress_videos(){
 }
 
 
-/**
- * 
- */
-void compute_statistics(vector<vector<double>>){
-    //for video in videos
+vector<vector<double>> compute_statistics(const vector<vector<double>>& input)
+{
+    vector<vector<double>> videos_stats;
 
+    for (const auto& timeseries : input)
+    {
+        // Convert the vector to a gsl_vector
+        gsl_vector* v = gsl_vector_alloc(timeseries.size());
+        for (size_t i = 0; i < timeseries.size(); i++)
+        {
+            gsl_vector_set(v, i, timeseries[i]);
+        }
+
+        vector<double> video_stats;
+
+        // Compute the mean of the timeseries
+        double mean = gsl_stats_mean(v->data, v->stride, v->size);
+        video_stats.push_back(mean);
+
+        // Compute the variance of the timeseries
+        double variance = gsl_stats_variance(v->data, v->stride, v->size);
+        video_stats.push_back(variance);
+
+        // Compute the autocorrelation of lag 1 of the timeseries
+        double autocorr = gsl_stats_lag1_autocorrelation(v->data, v->stride, v->size);
+
+        cout << mean << endl << variance << endl << autocorr << endl;
+        video_stats.push_back(autocorr);
+
+        // Free the gsl_vector
+        gsl_vector_free(v);
+
+        videos_stats.push_back(video_stats);
+    }
+
+    return videos_stats;
 }
 
 
@@ -175,7 +273,7 @@ void compute_statistics(vector<vector<double>>){
 int main (int argc, char** argv) {
   
   vector<vector<double>> videos_ssim = compress_videos();
-  /*compute statistics(videos_ssim)*/
+  compute_statistics(videos_ssim);
 
 
 }
