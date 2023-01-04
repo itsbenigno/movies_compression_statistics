@@ -111,20 +111,18 @@ string get_ssim_name(const string& video, int n_vid) {
  * @param the path of a video
  * @return true if the video_path is a file with .mp4 extension
  */
-bool is_video(const string& video_path) {
-  filesystem::path input_path(video_path);
-  input_path = filesystem::path::make_preferred(input_path);
-  if (!input_path.has_extension()) {
+bool is_video(string video_name){
+    filesystem::path filePath = video_name;
+    string extension = filePath.extension().string();
+    transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+    if (extension == ".mp4")
+    {
+        if (filesystem::exists(filePath))
+        {
+            return true;
+        }
+    }
     return false;
-  }
-
-  string extension = input_path.extension().string();
-  transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-  if (extension != ".mp4") {
-    return false;
-  }
-
-  return filesystem::is_regular_file(input_path);
 }
 
 
@@ -184,7 +182,11 @@ vector<double> mean_elt_wise(const vector<vector<double>> vec) {
 
 
 /**
- * 0% compression actually lose something (I think negligible) because we go from VBR to CBR 
+ * Take the videos in "Videos" folder. 
+ * For each video: apply a certain pct of compression, and compute the ssim
+ * note: 0% compression actually lose something (I think negligible) because we go from VBR to CBR 
+ * @param void
+ * @return a vector containing for each video the ssim timeseries
  */
 vector<vector<double>> compress_videos(){
 
@@ -227,6 +229,11 @@ vector<vector<double>> compress_videos(){
 }
 
 
+/**
+ * Using the GSL library computes the mean, variance, and lag1 autocorellation
+ * @param a vector containing the ssim timeseries for each video
+ * @return a vector containing the moments for each video
+ */
 vector<vector<double>> compute_statistics(const vector<vector<double>>& input)
 {
     vector<vector<double>> videos_stats;
@@ -267,13 +274,37 @@ vector<vector<double>> compute_statistics(const vector<vector<double>>& input)
 
 
 /**
- * Compress the videos
- * Compute the statistics 
+ * @param the moments of each video
+ * @return void
+ */
+void save_videos_stats(const vector<vector<double>> &data){
+    ofstream file("stats.txt");
+    if (file.is_open()) {
+        for (const auto &item : data) {
+            for (const auto &value : item) {
+                file << value << " ";
+            }
+            file << endl;
+        }
+        file.close();
+    } else {
+        cerr << "Error opening file" << endl;
+    }
+}
+
+
+/**
+ * Given a folder "Videos" containing various videos
+ * For each video:
+ * - Compute the timeseries of the ssim for certain compression
+ * - Compute the mean (i.e. regression for 0) of the ssim
+ * - Compute the moments of the mean of the ssim timeseries
+ * - Write them on a file
  */
 int main (int argc, char** argv) {
   
   vector<vector<double>> videos_ssim = compress_videos();
-  compute_statistics(videos_ssim);
-
+  vector<vector<double>> videos_stats = compute_statistics(videos_ssim);
+  save_videos_stats(videos_stats);
 
 }
