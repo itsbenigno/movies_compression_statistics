@@ -1,4 +1,4 @@
-# Movie Statistics calculator
+# Movie statistics calculator
 
 When a certain compression is applied to the frame of a video, we can use the [SSIM](https://en.wikipedia.org/wiki/Structural_similarity) to know how much the compression deteriorated the frame.
 
