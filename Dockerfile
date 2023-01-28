@@ -7,4 +7,4 @@ RUN sudo apt-get -y install build-essential
 RUN sudo apt-get install -y libgsl-dev
 RUN sudo apt-get -y install ffmpeg
 WORKDIR "/app"
-RUN make
+RUN make 
