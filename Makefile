@@ -5,3 +5,6 @@ compile:
 
 run: 
 	./stats
+
+clean:
+	rm *.csv

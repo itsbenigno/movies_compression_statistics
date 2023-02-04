@@ -323,8 +323,8 @@ vector<vector<double>> compute_ssim_model()
   return video_timeseries;
 }
 /**
+ * Write the arima order and the moments ranges into txt files
  * @param the moments range and the max arima order
- * @return void
  */
 void save_videos_stats(const vector<int> &order, const vector<vector<double>> &moments)
 {
@@ -346,13 +346,13 @@ void save_videos_stats(const vector<int> &order, const vector<vector<double>> &m
     cerr << "Error opening file" << endl;
   }
   ofstream order_file("max_arima_order.txt");
-  if (moments_file.is_open())
+  if (order_file.is_open())
   {
     for (const auto &value : order)
     {
-      moments_file << value << " ";
+      order_file << value << " ";
     }
-    moments_file.close();
+    order_file.close();
   }
   else
   {
@@ -372,9 +372,9 @@ bool compute_statistics(const vector<vector<double>> &input)
   vector<vector<double>> moments_range;
 
   vector<int> max_arima_order{0, 0, 0};
-  vector<double> mean_range = {numeric_limits<double>::lowest(), numeric_limits<double>::max()};
-  vector<double> variance_range = {numeric_limits<double>::lowest(), numeric_limits<double>::max()};
-  vector<double> autocorrelation_range = {numeric_limits<double>::lowest(), numeric_limits<double>::max()};
+  vector<double> mean_range = {numeric_limits<double>::max(), numeric_limits<double>::lowest()};
+  vector<double> variance_range = {numeric_limits<double>::max(), numeric_limits<double>::lowest()};
+  vector<double> autocorrelation_range = {numeric_limits<double>::max(), numeric_limits<double>::lowest()};
 
   for (const auto &timeseries : input)
   {
@@ -383,9 +383,9 @@ bool compute_statistics(const vector<vector<double>> &input)
     write_timeseries(timeseries, timeseries_filename);
 
     // get the order of the model
-    string max_search_p = "5"; // maximum p for the model
+    string max_search_p = "10"; // maximum p for the model
     string max_search_d = "3";
-    string max_search_q = "5";
+    string max_search_q = "10";
     string command = "python3 model_calculator.py \"" + timeseries_filename + "\" " + max_search_p + " " + max_search_d + " " + max_search_q;
     try
     {
@@ -397,7 +397,8 @@ bool compute_statistics(const vector<vector<double>> &input)
       return false;
     }
     // if the vector is empy return an error
-    vector<int> arima_order = get_arima_order(timeseries_filename);
+    string arima_order_filename = "best_ARIMA_order.csv";
+    vector<int> arima_order = get_arima_order(arima_order_filename);
     if (arima_order.empty())
     {
       return false;
