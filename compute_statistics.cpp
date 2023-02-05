@@ -384,7 +384,7 @@ bool compute_statistics(const vector<vector<double>> &input)
 
     // get the order of the model
     string max_search_p = "10"; // maximum p for the model
-    string max_search_d = "3";
+    string max_search_d = "2";
     string max_search_q = "10";
     string command = "python3 model_calculator.py \"" + timeseries_filename + "\" " + max_search_p + " " + max_search_d + " " + max_search_q;
     try
