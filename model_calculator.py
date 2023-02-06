@@ -5,8 +5,6 @@ import csv
 
 """Takes a timeseries filename as input, and the max (p,d,q) to check for modeling the 
 timeseries. It reads the timeseries, and return the bests (p,d,q)"""
-
-
 def compute_pdq(timeseries_in, max_p_in, max_d_in, max_q_in):
     timeseries = pd.read_csv(timeseries_in)
     if timeseries.isnull().values.any():
@@ -18,8 +16,6 @@ def compute_pdq(timeseries_in, max_p_in, max_d_in, max_q_in):
 
 
 """Check number and type of arguments"""
-
-
 def parse_input(argv):
     if len(argv) != 5:
         raise ValueError(
@@ -41,9 +37,9 @@ def parse_input(argv):
 
 def main():
     try:
-        input = parse_input(sys.argv)
-        timeseries = input[0]
-        max_p_in, max_d_in, max_q_in = input[1]
+        input_params = parse_input(sys.argv)
+        timeseries = input_params[0]
+        max_p_in, max_d_in, max_q_in = input_params[1]
         p, d, q = compute_pdq(timeseries, max_p_in, max_d_in,
                               max_q_in)  # order of the series
 
