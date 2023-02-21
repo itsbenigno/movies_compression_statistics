@@ -5,4 +5,3 @@ compile:
 
 run: 
 	./stats
-	cat movies_compression_statistics.csv
