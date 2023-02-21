@@ -8,7 +8,11 @@ Insert the videos you want to know the statistics of in the folder "Videos".
 You will get the results in movie_statistics.csv 
 
 ## Build
+```
 docker build -t movie_stats .
+```
 
 ## Run
+```
 docker run -it movie_stats make run
+```
