@@ -1,10 +1,8 @@
-all: compile
+all: compile run
 	
 compile: 
-	g++ -o stats compute_statistics.cpp -lgsl
+	g++ -o stats statistics.cpp -lgsl
 
 run: 
 	./stats
-
-clean:
-	rm *.csv
+	cat movies_compression_statistics.csv
